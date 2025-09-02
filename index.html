@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Short Leave Tracking System</title>
+  <meta name="description" content="Short Leave tracker that saves records into a GitHub repo (via GitHub REST API)." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .kbd{border:1px solid #e5e7eb;border-bottom-width:3px;border-radius:.375rem;padding:.125rem .375rem;font-size:.75rem;}
+  </style>
+</head>
+<body class="bg-gray-100 font-sans p-4 min-h-screen flex items-center justify-center">
+  <!-- Message Box -->
+  <div id="messageBox" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 p-4 rounded-md transition-all duration-300 transform scale-0 opacity-0"></div>
+
+  <div class="container mx-auto p-6 md:p-8 bg-white rounded-lg shadow-xl max-w-5xl">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Short Leave Tracking System</h1>
+        <p class="text-gray-500 text-sm">Records are saved to a GitHub repo. Configure below.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="syncBadge" class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 border">Not connected</span>
+        <button id="openSettings" class="bg-gray-800 text-white px-4 py-2 rounded-md font-semibold hover:bg-black">Settings</button>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="hidden mb-6 border rounded-lg">
+      <div class="p-4 bg-gray-50 border-b flex items-center justify-between">
+        <h2 class="text-lg font-semibold">GitHub Settings</h2>
+        <button id="closeSettings" class="text-sm text-gray-600 hover:text-gray-900">Close</button>
+      </div>
+      <form id="settingsForm" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Owner / Org</label>
+          <input id="ghOwner" class="mt-1 w-full rounded-md border-gray-300 p-2" placeholder="e.g. niroshanmahendran" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Repository</label>
+          <input id="ghRepo" class="mt-1 w-full rounded-md border-gray-300 p-2" placeholder="e.g. short-leave-tracker" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Branch</label>
+          <input id="ghBranch" class="mt-1 w-full rounded-md border-gray-300 p-2" placeholder="e.g. main" value="main" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Data file path in repo</label>
+          <input id="ghPath" class="mt-1 w-full rounded-md border-gray-300 p-2" placeholder="e.g. data/leave_records.json" value="data/leave_records.json" required />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700">GitHub Personal Access Token (PAT)</label>
+          <input id="ghToken" type="password" class="mt-1 w-full rounded-md border-gray-300 p-2" placeholder="Fine-grained token with contents:read,contents:write" required />
+          <p class="text-xs text-gray-500 mt-1">Your token is used only in this browser and stored in <strong>sessionStorage</strong> (cleared on browser/tab close). Do <strong>not</strong> commit it anywhere.</p>
+        </div>
+        <div class="md:col-span-2 flex justify-end gap-2">
+          <button type="button" id="testConnection" class="px-4 py-2 rounded bg-gray-100 border hover:bg-gray-200">Test</button>
+          <button type="submit" class="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700">Save Settings</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Add Leave Record Form -->
+    <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+      <h2 class="text-2xl font-semibold text-gray-700 mb-4">Add a New Leave Record</h2>
+      <form id="leaveForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="department" class="block text-sm font-medium text-gray-700">Department</label>
+          <select id="department" name="department" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required>
+            <option value="">-- Select --</option>
+            <option value="Verification">Verification</option>
+            <option value="Collection">Collection</option>
+            <option value="CS|TS|RPD">CS|TS|RPD</option>
+            <option value="Quality Control">Quality Control</option>
+          </select>
+        </div>
+        <div>
+          <label for="name" class="block text-sm font-medium text-gray-700">Name</label>
+          <select id="name" name="name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required>
+            <option value="">-- Select --</option>
+          </select>
+        </div>
+        <div>
+          <label for="date" class="block text-sm font-medium text-gray-700">Date</label>
+          <input type="date" id="date" name="date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Duration (hours)</label>
+          <div class="mt-2 space-y-2">
+            <div class="flex items-center"><input id="duration-1" name="leaveDuration" type="radio" value="1 hour" class="h-4 w-4 text-indigo-600 border-gray-300" required /><label for="duration-1" class="ml-2 block text-sm text-gray-900">1 hour</label></div>
+            <div class="flex items-center"><input id="duration-2" name="leaveDuration" type="radio" value="2 hours" class="h-4 w-4 text-indigo-600 border-gray-300" required /><label for="duration-2" class="ml-2 block text-sm text-gray-900">2 hours</label></div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Shift</label>
+          <div class="mt-2 space-y-2">
+            <div class="flex items-center"><input id="shift-morning" name="shift" type="radio" value="Morning" class="h-4 w-4 text-indigo-600 border-gray-300" required /><label for="shift-morning" class="ml-2 block text-sm text-gray-900">Morning</label></div>
+            <div class="flex items-center"><input id="shift-evening" name="shift" type="radio" value="Evening" class="h-4 w-4 text-indigo-600 border-gray-300" required /><label for="shift-evening" class="ml-2 block text-sm text-gray-900">Evening</label></div>
+          </div>
+        </div>
+        <div class="col-span-1 md:col-span-3 flex flex-wrap justify-end gap-2">
+          <button type="button" id="exportButton" class="bg-gray-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-gray-700">Export CSV</button>
+          <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-indigo-700">Add Record</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Leave Records Table -->
+    <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
+      <h2 class="text-2xl font-semibold text-gray-700 mb-4 px-2">Leave Records</h2>
+      <table class="w-full text-sm text-left text-gray-700">
+        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+          <tr>
+            <th scope="col" class="px-6 py-3">Record ID</th>
+            <th scope="col" class="px-6 py-3">Department</th>
+            <th scope="col" class="px-6 py-3">Name</th>
+            <th scope="col" class="px-6 py-3">Date</th>
+            <th scope="col" class="px-6 py-3">Duration</th>
+            <th scope="col" class="px-6 py-3">Shift</th>
+          </tr>
+        </thead>
+        <tbody id="leaveTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Delete Record Form -->
+    <div class="mt-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+      <h2 class="text-2xl font-semibold text-gray-700 mb-4">Delete a Record</h2>
+      <p class="text-sm text-gray-500 mb-4">Use the Record ID from the table above.</p>
+      <form id="deleteForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="deleteRecordId" class="block text-sm font-medium text-gray-700">Record ID</label>
+          <input type="text" id="deleteRecordId" name="deleteRecordId" class="mt-1 block w-full rounded-md border-gray-300 p-2" required />
+        </div>
+        <div>
+          <label for="deleteUsername" class="block text-sm font-medium text-gray-700">Username</label>
+          <input type="text" id="deleteUsername" name="deleteUsername" class="mt-1 block w-full rounded-md border-gray-300 p-2" required />
+        </div>
+        <div>
+          <label for="deletePassword" class="block text-sm font-medium text-gray-700">Password</label>
+          <input type="password" id="deletePassword" name="deletePassword" class="mt-1 block w-full rounded-md border-gray-300 p-2" required />
+        </div>
+        <div class="col-span-1 md:col-span-3 flex justify-end">
+          <button type="submit" class="bg-red-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-red-700">Delete Record</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Add New Staff Form -->
+    <div class="mt-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+      <h2 class="text-2xl font-semibold text-gray-700 mb-4">Add a New Staff Member</h2>
+      <form id="addStaffForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="addStaffDepartment" class="block text-sm font-medium text-gray-700">Department</label>
+          <select id="addStaffDepartment" name="addStaffDepartment" class="mt-1 block w-full rounded-md border-gray-300 p-2" required>
+            <option value="">-- Select --</option>
+            <option value="Verification">Verification</option>
+            <option value="Collection">Collection</option>
+            <option value="CS|TS|RPD">CS|TS|RPD</option>
+            <option value="Quality Control">Quality Control</option>
+          </select>
+        </div>
+        <div>
+          <label for="newStaffName" class="block text-sm font-medium text-gray-700">Staff Name</label>
+          <input type="text" id="newStaffName" name="newStaffName" class="mt-1 block w-full rounded-md border-gray-300 p-2" required />
+        </div>
+        <div class="col-span-1 md:col-span-3 flex justify-end">
+          <button type="submit" class="bg-gray-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-gray-700">Add Staff</button>
+        </div>
+      </form>
+      <p class="text-xs text-gray-500 mt-3">Default staff lists are stored locally. You can keep using them as-is; records are saved to GitHub.</p>
+    </div>
+  </div>
+
+  <script>
+    // --- Utilities ---
+    function showMessage(message, type = 'info') {
+      const messageBox = document.getElementById('messageBox');
+      messageBox.textContent = message;
+      messageBox.className = `p-4 rounded-md mt-4 text-center text-white ${type === 'error' ? 'bg-red-500' : 'bg-green-600'} transition-all duration-300 transform scale-100 opacity-100`;
+      clearTimeout(showMessage._t);
+      showMessage._t = setTimeout(() => messageBox.classList.add('scale-0', 'opacity-0'), 3000);
+    }
+
+    const cfgKeys = {
+      owner: 'gh.owner', repo: 'gh.repo', path: 'gh.path', branch: 'gh.branch', token: 'gh.token'
+    };
+
+    function saveCfgToSession(cfg) {
+      sessionStorage.setItem(cfgKeys.owner, cfg.owner || '');
+      sessionStorage.setItem(cfgKeys.repo, cfg.repo || '');
+      sessionStorage.setItem(cfgKeys.path, cfg.path || '');
+      sessionStorage.setItem(cfgKeys.branch, cfg.branch || '');
+      // store token in sessionStorage only
+      sessionStorage.setItem(cfgKeys.token, cfg.token || '');
+    }
+
+    function readCfgFromSession() {
+      return {
+        owner: sessionStorage.getItem(cfgKeys.owner) || '',
+        repo: sessionStorage.getItem(cfgKeys.repo) || '',
+        path: sessionStorage.getItem(cfgKeys.path) || 'data/leave_records.json',
+        branch: sessionStorage.getItem(cfgKeys.branch) || 'main',
+        token: sessionStorage.getItem(cfgKeys.token) || ''
+      };
+    }
+
+    function syncBadge(text, color) {
+      const el = document.getElementById('syncBadge');
+      el.textContent = text;
+      el.className = `text-xs px-2 py-1 rounded border ${color}`;
+    }
+
+    // --- Base64 helpers (UTF-8 safe) ---
+    function toBase64(str) {
+      const utf8 = new TextEncoder().encode(str);
+      let bin = '';
+      utf8.forEach(b => bin += String.fromCharCode(b));
+      return btoa(bin);
+    }
+    function fromBase64(b64) {
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    // --- GitHub API ---
+    function ghHeaders(token) {
+      return {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      };
+    }
+
+    async function ghGetFile({owner, repo, path, branch, token}) {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+      const res = await fetch(url, { headers: ghHeaders(token) });
+      if (res.status === 404) return { contentText: null, sha: null };
+      if (!res.ok) throw new Error(`GitHub GET failed: ${res.status}`);
+      const json = await res.json();
+      const contentText = fromBase64(json.content || '');
+      return { contentText, sha: json.sha };
+    }
+
+    async function ghPutFile({owner, repo, path, branch, token}, text, sha, messageHint='Update leave records') {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+      const body = {
+        message: `${messageHint} (${new Date().toISOString()})`,
+        content: toBase64(text),
+        branch
+      };
+      if (sha) body.sha = sha; // required for update
+      const res = await fetch(url, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`GitHub PUT failed: ${res.status} ${t}`);
+      }
+      const json = await res.json();
+      return json.content.sha;
+    }
+
+    // --- App State ---
+    const LOCAL_STORAGE_STAFF_KEY = 'departmentStaffLists';
+    const defaultStaffLists = {
+      'Verification': ['Ruwanjana Dissanayaka','Arunali Vihanga','Praveen Thrindu','Rahul Krishnan','Sherani Jewanandan','Menaka Lakmali','Dilanka Ranali','Dewni Pabasari','Gimhan Dananjana','Sumithra Anthony','Sachini Manjula','Vijini Lakshika','Tashani Ayodya','Umasha Tekmi','Iruni Nethmini','Akashara Jeraj','Ashani Nawodya'],
+      'Collection': ['Dilshan Madhuwantha','Nimesh Perera','Iresha Dilhani','Asanka Nash','Pasindu Premalal','Pavithra Thangarajah','Preeni Sanoja','Varuni Lakshani','Suresh Jadeesha','Nipuni Weerakoon','Chathura Kosala','Sandeepa Lakruwan','Lahiru Lakmal','Eshan Shashika','Venura Lakshitha','Thanusha Deshani','Thanoj Vishman','Lehan Hansaja','Hasini Pituwala','Malinda Chathuranga','Vihaga Makumbura','Akalanka Fernando','Dulan Charuka','Heshan Kalhara','Prarthana Dewmini','Kavindu Kalhara','Ruchini Navanjana','Sanduni Kaushalya','Chantuka Malisha','Thilina Hashan','Dinusha Dasanayaka','Amashi Sadamini','Naduni Kaveesha','Sandali Nisansala','Chathuni Vimarsha','Sasantha Udesh','Raveesha Nethmini','Nimanthi Shamika','Lakshan Perera','Imalsha Perera','Gihan Pamodh','Harith Shenun','Nipun Sudharaka','Avishka Shalinda','Niroshan Buddika','Deshan Jayaweera','Kalindu Sachith','Chathurangi Baddevithana','Sandali Neththara','Sanduni Rupika','Amandi Upeksha','Chamilka Oshadha','Niloshan Anthany','Maleesha Kalhara','Buddini Darsha','Methdinu Jayasinhe','Ishara Maduwanthi'],
+      'CS|TS|RPD': ['Gayanthi Madhuwanthi','Noyeli Yalindi','Fathima Sasmiya','Jegan Gayathri','Chathurya Madhavi','Ridmi Jayasekara','Ama Nuwanthi','Saduni Nethmini','Ama Kavindi','Nilushika Prasadini','Rukshan Jesudasan','Nawodya Udayangana','Dulan Pasindu','Kavindu Prasath','Maheshwaran Madushan','Oshadi Wanasinghe','Safiya Jaan','Ishan Rajapaksha','Mohamed Aslam','Prabuddhi Malshani','Neha Kottage'],
+      'Quality Control': ['Amanda Udeshani','Samadhi Lanka','Kaveesha Dias','Sandhanam Kavishanth']
+    };
+
+    function loadStaffLists() {
+      try {
+        const stored = localStorage.getItem(LOCAL_STORAGE_STAFF_KEY);
+        return stored ? JSON.parse(stored) : defaultStaffLists;
+      } catch (e) { return defaultStaffLists; }
+    }
+    function saveStaffLists(lists) {
+      localStorage.setItem(LOCAL_STORAGE_STAFF_KEY, JSON.stringify(lists));
+    }
+
+    // Records live in GitHub
+    let cachedSha = null; // last known sha of JSON file
+
+    async function loadRecordsFromGitHub() {
+      const cfg = readCfgFromSession();
+      if (!cfg.owner || !cfg.repo || !cfg.path || !cfg.branch || !cfg.token) {
+        syncBadge('Not connected', 'bg-yellow-50 text-yellow-700 border-yellow-300');
+        return [];
+      }
+      try {
+        const { contentText, sha } = await ghGetFile(cfg);
+        cachedSha = sha;
+        if (!contentText) {
+          syncBadge('Connected (new file will be created)', 'bg-blue-50 text-blue-700 border-blue-300');
+          return [];
+        }
+        const data = JSON.parse(contentText);
+        syncBadge('Connected ✓', 'bg-green-50 text-green-700 border-green-300');
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.error(e);
+        showMessage('Failed to load from GitHub. Check settings/token.', 'error');
+        syncBadge('Error', 'bg-red-50 text-red-700 border-red-300');
+        return [];
+      }
+    }
+
+    async function saveRecordsToGitHub(records, messageHint) {
+      const cfg = readCfgFromSession();
+      if (!cfg.token) { showMessage('Missing GitHub token in Settings.', 'error'); return false; }
+      try {
+        const text = JSON.stringify(records, null, 2);
+        const newSha = await ghPutFile(cfg, text, cachedSha, messageHint);
+        cachedSha = newSha;
+        syncBadge('Connected ✓', 'bg-green-50 text-green-700 border-green-300');
+        return true;
+      } catch (e) {
+        console.error(e);
+        showMessage('Failed to save to GitHub (see console).', 'error');
+        syncBadge('Error', 'bg-red-50 text-red-700 border-red-300');
+        return false;
+      }
+    }
+
+    // --- DOM Wiring ---
+    const departmentDropdown = document.getElementById('department');
+    const nameDropdown = document.getElementById('name');
+    const leaveForm = document.getElementById('leaveForm');
+    const tableBody = document.getElementById('leaveTableBody');
+    const exportButton = document.getElementById('exportButton');
+    const deleteForm = document.getElementById('deleteForm');
+
+    const addStaffForm = document.getElementById('addStaffForm');
+    const addStaffDepartmentDropdown = document.getElementById('addStaffDepartment');
+    const newStaffNameInput = document.getElementById('newStaffName');
+
+    const openSettingsBtn = document.getElementById('openSettings');
+    const closeSettingsBtn = document.getElementById('closeSettings');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const settingsForm = document.getElementById('settingsForm');
+
+    const ghOwner = document.getElementById('ghOwner');
+    const ghRepo = document.getElementById('ghRepo');
+    const ghBranch = document.getElementById('ghBranch');
+    const ghPath = document.getElementById('ghPath');
+    const ghToken = document.getElementById('ghToken');
+    const testConnection = document.getElementById('testConnection');
+
+    function updateNamesDropdown() {
+      const staffLists = loadStaffLists();
+      const selectedDepartment = departmentDropdown.value;
+      nameDropdown.innerHTML = '<option value="">-- Select --</option>';
+      (staffLists[selectedDepartment] || []).forEach(name => {
+        const option = document.createElement('option');
+        option.value = name; option.textContent = name;
+        nameDropdown.appendChild(option);
+      });
+    }
+
+    function renderTable(records) {
+      tableBody.innerHTML = '';
+      if (!records.length) {
+        const noDataRow = document.createElement('tr');
+        const noDataCell = document.createElement('td');
+        noDataCell.colSpan = 6;
+        noDataCell.className = 'text-center py-4 text-gray-500 italic';
+        noDataCell.textContent = 'No leave records found. Add one above!';
+        noDataRow.appendChild(noDataCell);
+        tableBody.appendChild(noDataRow);
+        return;
+      }
+      records.forEach(record => {
+        const row = document.createElement('tr');
+        row.className = 'bg-white border-b hover:bg-gray-50';
+        row.innerHTML = `
+          <td class="px-6 py-4 text-xs font-mono">${record.id}</td>
+          <td class="px-6 py-4">${record.department}</td>
+          <td class="px-6 py-4">${record.name}</td>
+          <td class="px-6 py-4">${record.date}</td>
+          <td class="px-6 py-4">${record.duration}</td>
+          <td class="px-6 py-4">${record.shift}</td>`;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function toCSV(records){
+      let csv = 'Record ID,Department,Name,Date,Duration,Shift\n';
+      records.forEach(r => {
+        csv += `${r.id},"${r.department}","${r.name}","${r.date}","${r.duration}","${r.shift}"\n`;
+      });
+      return csv;
+    }
+
+    // App data in memory
+    let recordsCache = [];
+
+    async function bootstrap() {
+      // preload settings UI from session
+      const cfg = readCfgFromSession();
+      ghOwner.value = cfg.owner; ghRepo.value = cfg.repo; ghBranch.value = cfg.branch; ghPath.value = cfg.path; ghToken.value = cfg.token;
+
+      // try load records from GitHub (if configured)
+      recordsCache = await loadRecordsFromGitHub();
+      renderTable(recordsCache);
+      updateNamesDropdown();
+    }
+
+    // Event: Settings open/close
+    openSettingsBtn.addEventListener('click', () => settingsPanel.classList.remove('hidden'));
+    closeSettingsBtn.addEventListener('click', () => settingsPanel.classList.add('hidden'));
+
+    // Event: Save settings
+    settingsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const cfg = { owner: ghOwner.value.trim(), repo: ghRepo.value.trim(), branch: ghBranch.value.trim() || 'main', path: ghPath.value.trim(), token: ghToken.value.trim() };
+      saveCfgToSession(cfg);
+      showMessage('Settings saved to session.');
+      // reload data using new settings
+      recordsCache = await loadRecordsFromGitHub();
+      renderTable(recordsCache);
+    });
+
+    // Event: Test connection
+    testConnection.addEventListener('click', async () => {
+      try {
+        const cfg = { owner: ghOwner.value.trim(), repo: ghRepo.value.trim(), branch: ghBranch.value.trim() || 'main', path: ghPath.value.trim(), token: ghToken.value.trim() };
+        const { contentText } = await ghGetFile(cfg);
+        showMessage(contentText ? 'Connected! File exists.' : 'Connected! File will be created on first save.');
+        syncBadge('Connected ✓', 'bg-green-50 text-green-700 border-green-300');
+      } catch (e) {
+        console.error(e);
+        showMessage('Connection failed. Check repo/branch/path/token.', 'error');
+        syncBadge('Error', 'bg-red-50 text-red-700 border-red-300');
+      }
+    });
+
+    // Event: Department change
+    departmentDropdown.addEventListener('change', updateNamesDropdown);
+
+    // Event: Add record
+    leaveForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const department = document.getElementById('department').value;
+      const date = document.getElementById('date').value;
+      const duration = document.querySelector('input[name="leaveDuration"]:checked')?.value;
+      const shift = document.querySelector('input[name="shift"]:checked')?.value;
+
+      if (!name || !department || !date || !duration || !shift) {
+        showMessage('Please fill out all fields.', 'error');
+        return;
+      }
+
+      // limit by month: 2h
+      const monthYear = date.substring(0, 7);
+      const hoursTaken = recordsCache
+        .filter(r => r.name === name && r.month_year === monthYear)
+        .reduce((t, r) => t + parseInt(r.duration.split(' ')[0], 10), 0);
+      const newDuration = parseInt(duration.split(' ')[0], 10);
+      if (hoursTaken + newDuration > 2) {
+        showMessage("You have exceeded this month's leaves.", 'error');
+        return;
+      }
+
+      const newRecord = { id: Date.now().toString(), department, name, date, duration, shift, month_year: monthYear };
+      const next = [...recordsCache, newRecord];
+
+      if (await saveRecordsToGitHub(next, 'Add leave record')) {
+        recordsCache = next;
+        renderTable(recordsCache);
+        leaveForm.reset();
+        showMessage('Leave record added and saved to GitHub!');
+      }
+    });
+
+    // Event: Delete record
+    deleteForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('deleteUsername').value;
+      const password = document.getElementById('deletePassword').value;
+      const recordIdToDelete = document.getElementById('deleteRecordId').value.trim();
+
+      if (username !== 'admin' || password !== 'damin') {
+        showMessage('Invalid username or password.', 'error');
+        return;
+      }
+      if (!recordIdToDelete) {
+        showMessage('Please enter a Record ID to delete.', 'error');
+        return;
+      }
+
+      const next = recordsCache.filter(r => r.id !== recordIdToDelete);
+      if (next.length === recordsCache.length) {
+        showMessage('Record not found. Please check the ID.', 'error');
+        return;
+      }
+
+      if (await saveRecordsToGitHub(next, 'Delete leave record')) {
+        recordsCache = next;
+        renderTable(recordsCache);
+        showMessage('Leave record deleted and saved to GitHub!');
+      }
+    });
+
+    // Event: Export CSV (client side only)
+    exportButton.addEventListener('click', () => {
+      const blob = new Blob([toCSV(recordsCache)], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'leave_records.csv';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      showMessage('CSV exported!');
+    });
+
+    // Add staff
+    addStaffForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const department = addStaffDepartmentDropdown.value;
+      const newName = newStaffNameInput.value.trim();
+
+      if (!department || !newName) {
+        showMessage('Please select a department and enter a name.', 'error');
+        return;
+      }
+      const lists = loadStaffLists();
+      const arr = lists[department] || (lists[department] = []);
+      if (arr.includes(newName)) { showMessage('This staff member already exists in the selected department.', 'error'); return; }
+      arr.push(newName);
+      saveStaffLists(lists);
+      showMessage(`${newName} added to ${department} department.`);
+      if (document.getElementById('department').value === department) updateNamesDropdown();
+      newStaffNameInput.value = '';
+    });
+
+    // Boot
+    bootstrap();
+  </script>
+</body>
+</html>
