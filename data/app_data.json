@@ -25,15 +25,5 @@
       "Sandhanam Kavishanth"
     ]
   },
-  "records": [
-    {
-      "id": "3798f3e4-60ff-4fa8-b707-51defc2c0854",
-      "department": "Collection",
-      "name": "Dilshan Madhuwantha",
-      "date": "2025-09-04",
-      "duration": "2 hours",
-      "shift": "Evening",
-      "month_year": "2025-09"
-    }
-  ]
+  "records": []
 }
