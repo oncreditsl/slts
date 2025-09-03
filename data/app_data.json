@@ -27,15 +27,6 @@
   },
   "records": [
     {
-      "id": "c305251a-d0c1-494c-a9d3-eff5242c41ba",
-      "department": "Verification",
-      "name": "Ruwanjana Dissanayaka",
-      "date": "2025-09-04",
-      "duration": "1 hour",
-      "shift": "Morning",
-      "month_year": "2025-09"
-    },
-    {
       "id": "3798f3e4-60ff-4fa8-b707-51defc2c0854",
       "department": "Collection",
       "name": "Dilshan Madhuwantha",
